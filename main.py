@@ -63,10 +63,18 @@ def get_arguements() -> argparse.Namespace:
     return parser.parse_args()
 
 
-class TransactionRecordsCompiler:
+class TransactionAggregator:
 
     def __init__(self, bank_statements: list[str], discover_credit_statements: list[str],
                 start_date: tuple[int, int, int], end_date: tuple[int, int, int]):
+        """Class constructor
+
+        Args:
+            bank_statements (list[str]): all bank statements used in this call
+            discover_credit_statements (list[str]): all discover credit statements used in this call
+            start_date (tuple[int, int, int]): the day, month, and year to consider as a starting point when processing specific methods
+            end_date (tuple[int, int, int]): the day, month, and year to consider as a cut-off when processing specific methods
+        """
         self.__bank_statements: list[list[str]] = bank_statements
         self.__discover_credit_statements: list[str] = self.__read_in_statements(discover_credit_statements)
         self.__start_date: tuple[int, int, int] = start_date
@@ -74,27 +82,49 @@ class TransactionRecordsCompiler:
         
 
     def __read_statement(self, statement_file: str) -> list[str]:
+        """Reads in a single statement from a CSV
+
+        Args:
+            statement_file (str): the file path to the CSV
+
+        Returns:
+            list[str]: the contents of the CSV
+        """
         with open(statement_file) as csv_file:
             statement = csv.reader(csv_file, delimiter=',')
             return [entry for entry in statement]
 
 
-    def __read_in_statements(self, discover_statements: list[str]) -> list[list[str]]:
+    def __read_in_statements(self, statements: list[str]) -> list[list[str]]:
+        """Reads in all statement CSVs
+
+        Args:
+            statements (list[str]): file paths to CSVs of statements
+
+        Returns:
+            list[list[str]]: all CSVs of statements read in
+        """
         return [
             self.__read_statement(statement) \
-            for statement in discover_statements
+            for statement in statements
         ]
 
     
     def get_discover_statements(self) -> list[list[str]]:
+        """Gets list of all discover credit statements
+
+        Returns:
+            list[list[str]]: The discover credit statements read in
+        """
         return self.__discover_credit_statements
 
 
-def main(compiler: TransactionRecordsCompiler) -> None:
+def main(compiler: TransactionAggregator) -> None:
+    """Controls the operational flow of the program"""
     print(compiler.get_discover_statements()[0][1])
 
 
 if __name__ == '__main__':
     args: argparse.Namespace = get_arguements()
-    main(TransactionRecordsCompiler(args.bank_statements,
+    main(TransactionAggregator(args.bank_statements,
     args.discover_credit_statements, args.start_date, args.end_date))
