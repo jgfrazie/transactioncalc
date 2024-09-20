@@ -59,7 +59,14 @@ def get_arguements() -> argparse.Namespace:
         type=DATE
     )
     parser.add_argument(
-        '--discover-statement'
+        '--file',
+        help='name of outputted CSV',
+        default='transactions.csv'
+    )
+    parser.add_argument(
+        '-w',
+        help='writes to CSV with --file name',
+        action='store_true'
     )
     return parser.parse_args()
 
@@ -67,17 +74,19 @@ def get_arguements() -> argparse.Namespace:
 class TransactionAggregator:
 
     def __init__(self, bank_statements: list[str], discover_credit_statements: list[str],
-                start_date: tuple[int, int, int], end_date: tuple[int, int, int]):
+                file: str, start_date: tuple[int, int, int], end_date: tuple[int, int, int]):
         """Class constructor
 
         Args:
             bank_statements (list[str]): all bank statements used in this call
             discover_credit_statements (list[str]): all discover credit statements used in this call
+            file (str): name of the outputted CSV file
             start_date (tuple[int, int, int]): the day, month, and year to consider as a starting point when processing specific methods
             end_date (tuple[int, int, int]): the day, month, and year to consider as a cut-off when processing specific methods
         """
         self.__bank_statements: list[list[dict[str, str | float]]] = self.__read_in_statements(bank_statements, is_bank=True) if bank_statements is not None else None
         self.__discover_credit_statements: list[list[dict[str, str | float]]] = self.__read_in_statements(discover_credit_statements, is_discover=True) if discover_credit_statements is not None else None
+        self.__file: str = file
         self.__start_date: tuple[int, int, int] = start_date
         self.__end_date: tuple[int, int, int] = end_date
         
@@ -150,7 +159,7 @@ class TransactionAggregator:
         return statement
 
     
-    def get_discover_statements(self) -> list[list[str]]:
+    def get_discover_statements(self) -> list[dict[str, str | float]]:
         """Gets list of all discover credit statements
 
         Returns:
@@ -159,12 +168,33 @@ class TransactionAggregator:
         return self.__discover_credit_statements
 
 
-def main(compiler: TransactionAggregator) -> None:
+    #TODO: make compatible with both discover and bank statements
+    def write_to_csv(self) -> bool:
+        try:
+            with open(self.__file, 'w', newline='\n') as csv_file:
+                writer = csv.writer(csv_file, delimiter=',')
+                attributes: list[str] = self.__discover_credit_statements[0][0].keys()
+                writer.writerow(attributes)
+                for statement in self.__discover_credit_statements:
+                    for entry in statement:
+                        writer.writerow([entry[element] for element in attributes])
+
+            return True
+        except:
+            return False
+
+
+def main(compiler: TransactionAggregator, should_write: bool) -> None:
     """Controls the operational flow of the program"""
-    print(compiler.get_discover_statements()[0][1])
+    if should_write:
+        compiler.write_to_csv()
+    print("done")
 
 
 if __name__ == '__main__':
     args: argparse.Namespace = get_arguements()
+    if not args.bank_statements and not args.discover_credit_statements:
+        raise RuntimeError("at least one transactional statement must be passed. for more info, run 'transaction_aggregator.py -h'")
     main(TransactionAggregator(args.bank_statements,
-    args.discover_credit_statements, args.start_date, args.end_date))
+    args.discover_credit_statements, args.file, args.start_date, args.end_date),
+        args.w)
