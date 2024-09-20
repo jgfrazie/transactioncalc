@@ -3,9 +3,11 @@ import os
 import csv
 import types
 import argparse
+import datetime
 
-### Types the raw date arguments passed
-DATE = lambda arg: tuple([int(date_element) for date_element in arg.split('/')])
+def date(arg: str) -> datetime.date:
+    arg = tuple(int(a) for a in arg.split('/'))
+    return datetime.date(arg[2], arg[0], arg[1])
 
 def type_statements(arg: str) -> list[str]:
     """Converts the raw argument of a statement into a list of file paths to statements
@@ -23,6 +25,7 @@ def type_statements(arg: str) -> list[str]:
         for f in os.listdir(arg) \
             if os.path.isfile(os.path.join(arg, f))
     ]
+
 
 def get_arguements() -> argparse.Namespace:
     """Gets the command line arguments
@@ -48,15 +51,15 @@ def get_arguements() -> argparse.Namespace:
         '--start-date',
         required=False,
         help='all transactions before this date are excluded from the compiled log',
-        default='00/00/0000',
-        type=DATE
+        default='01/01/0001',
+        type=date
     )
     parser.add_argument(
         '--end-date',
         required=False,
         help='all transactions after this date are excluded from the compiled log',
-        default='99/99/9999',
-        type=DATE
+        default='12/31/9999',
+        type=date
     )
     parser.add_argument(
         '--file',
@@ -84,11 +87,11 @@ class TransactionAggregator:
             start_date (tuple[int, int, int]): the day, month, and year to consider as a starting point when processing specific methods
             end_date (tuple[int, int, int]): the day, month, and year to consider as a cut-off when processing specific methods
         """
-        self.__bank_statements: list[list[dict[str, str | float]]] = self.__read_in_statements(bank_statements, is_bank=True) if bank_statements is not None else None
-        self.__discover_credit_statements: list[list[dict[str, str | float]]] = self.__read_in_statements(discover_credit_statements, is_discover=True) if discover_credit_statements is not None else None
         self.__file: str = file
         self.__start_date: tuple[int, int, int] = start_date
         self.__end_date: tuple[int, int, int] = end_date
+        self.__bank_statements: list[list[dict[str, str | float]]] = self.__filter_statements(self.__read_in_statements(bank_statements, is_bank=True)) if bank_statements is not None else None
+        self.__discover_credit_statements: list[list[dict[str, str | float]]] = self.__filter_statements(self.__read_in_statements(discover_credit_statements, is_discover=True)) if discover_credit_statements is not None else None
         
 
     def __read_statement(self, statement_file: str, converter: types.FunctionType | None) -> list[dict[str, str | float]]:
@@ -158,6 +161,16 @@ class TransactionAggregator:
             }
         return statement
 
+
+    ###TODO: Fix indexing error after del on element in 2D list
+    def __filter_statements(self, statements: list[list[dict[str, str | float]]]) -> list[list[dict[str, str | float]]]:
+        for statement_id in range(len(statements)):
+            for entry_id in range(len(statements[statement_id])):
+                entry_date: datetime.date = date(statements[statement_id][entry_id]['Date'])
+                if entry_date < self.__start_date or entry_date > self.__end_date:
+                    del statements[statement_id][entry_id]
+        return statements
+
     
     def get_discover_statements(self) -> list[dict[str, str | float]]:
         """Gets list of all discover credit statements
@@ -196,5 +209,5 @@ if __name__ == '__main__':
     if not args.bank_statements and not args.discover_credit_statements:
         raise RuntimeError("at least one transactional statement must be passed. for more info, run 'transaction_aggregator.py -h'")
     main(TransactionAggregator(args.bank_statements,
-    args.discover_credit_statements, args.file, args.start_date, args.end_date),
+        args.discover_credit_statements, args.file, args.start_date, args.end_date),
         args.w)
