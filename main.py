@@ -1,6 +1,7 @@
 import re
 import os
 import csv
+import types
 import argparse
 
 ### Types the raw date arguments passed
@@ -75,39 +76,78 @@ class TransactionAggregator:
             start_date (tuple[int, int, int]): the day, month, and year to consider as a starting point when processing specific methods
             end_date (tuple[int, int, int]): the day, month, and year to consider as a cut-off when processing specific methods
         """
-        self.__bank_statements: list[list[str]] = bank_statements
-        self.__discover_credit_statements: list[str] = self.__read_in_statements(discover_credit_statements)
+        self.__bank_statements: list[list[dict[str, str | float]]] = self.__read_in_statements(bank_statements, is_bank=True) if bank_statements is not None else None
+        self.__discover_credit_statements: list[list[dict[str, str | float]]] = self.__read_in_statements(discover_credit_statements, is_discover=True) if discover_credit_statements is not None else None
         self.__start_date: tuple[int, int, int] = start_date
         self.__end_date: tuple[int, int, int] = end_date
         
 
-    def __read_statement(self, statement_file: str) -> list[str]:
-        """Reads in a single statement from a CSV
+    def __read_statement(self, statement_file: str, converter: types.FunctionType | None) -> list[dict[str, str | float]]:
+        """Reads in a single statement from a CSV. If flag is specified, processes it to standardized format. Otherwise, only takes in raw CSV format.
 
         Args:
             statement_file (str): the file path to the CSV
+            converter (types.FunctionType | None): a function to convert the raw statement into the standardize form. If None, return raw_statement.
 
         Returns:
-            list[str]: the contents of the CSV
+            list[dict[str, str | float]]: the contents of the CSV
         """
         with open(statement_file) as csv_file:
             statement = csv.reader(csv_file, delimiter=',')
-            return [entry for entry in statement]
+            raw_statement: list[list[str]] = [entry for entry in statement]
+            keys: list[str] = raw_statement[0]
+            raw_statement = raw_statement[1:]
+            typed_statement: list[dict[str, str | float]] = []
+            for entry_id in range(len(raw_statement)):
+                entry: list[str] = raw_statement[entry_id]
+                raw_statement[entry_id] = {keys[element_id]: entry[element_id] for element_id in range(len(entry))}
+            return raw_statement if converter is None else converter(raw_statement)
 
 
-    def __read_in_statements(self, statements: list[str]) -> list[list[str]]:
-        """Reads in all statement CSVs
+    def __read_in_statements(self, statements: list[str], is_discover: bool=False, is_bank: bool=False) -> list[list[dict[str, str | float]]]:
+        """Reads in all statement CSVs. If flag is specified, processes it to standardized format. Otherwise, only takes in raw CSV format.
 
         Args:
             statements (list[str]): file paths to CSVs of statements
+            is_discover (bool, optional): flag signifies this is a discover credit statement. Defaults to False.
+            is_bank (bool, optional): flag signifies this is a bank statement. Defaults to False.
 
         Returns:
-            list[list[str]]: all CSVs of statements read in
+            list[list[dict[str, str | float]]]: all CSVs of statements read in
         """
+        if is_discover and is_bank:
+            raise RuntimeError('statement cannot be both a discover and bank statement')
+
         return [
-            self.__read_statement(statement) \
+            self.__read_statement(
+                statement,
+                self.__convert_discover_statement if is_discover \
+                    else None if is_bank \
+                    else None
+            ) \
             for statement in statements
         ]
+
+
+    def __convert_discover_statement(self, statement: list[dict[str, str | float]]) -> list[dict[str, str | float]]:
+        """Converts discover's statement format to a standardized one
+
+        Args:
+            statement (list[dict[str, str  |  float]]): the discover formatted statement
+
+        Returns:
+            list[dict[str, str | float]]: the standard formatted statement
+        """
+        for entry_id in range(len(statement)):
+            entry: dict[str, str | float] = statement[entry_id]
+            del entry['Post Date']
+            statement[entry_id]: dict[str, str | float] = {
+                'Date': entry.pop('Trans. Date'),
+                'Description': entry.pop('Description'),
+                'Amount': float(entry.pop('Amount').replace(',', '')),
+                'Category': entry.pop('Category')
+            }
+        return statement
 
     
     def get_discover_statements(self) -> list[list[str]]:
