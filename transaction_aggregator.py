@@ -260,7 +260,7 @@ class TransactionAggregator:
             ]
         return statements
 
-    
+
     def get_discover_statements(self) -> list[dict[str, str | float]]:
         """Gets list of all discover credit statements
 
