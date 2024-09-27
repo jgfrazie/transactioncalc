@@ -6,8 +6,7 @@ import argparse
 import datetime
 
 def date(arg: str) -> datetime.date:
-    arg = tuple(int(a) for a in arg.split('/'))
-    return datetime.date(arg[2], arg[0], arg[1])
+    return datetime.datetime.strptime(arg, '%m/%d/%Y')
 
 def type_statements(arg: str) -> list[str]:
     """Converts the raw argument of a statement into a list of file paths to statements
@@ -64,7 +63,7 @@ def get_arguements() -> argparse.Namespace:
     parser.add_argument(
         '--file',
         help='name of outputted CSV',
-        default='transactions.csv'
+        default='transactions'
     )
     parser.add_argument(
         '-w',
@@ -129,16 +128,32 @@ class TransactionAggregator:
         """
         if is_discover and is_bank:
             raise RuntimeError('statement cannot be both a discover and bank statement')
-
+        
         return [
             self.__read_statement(
                 statement,
                 self.__convert_discover_statement if is_discover \
-                    else None if is_bank \
+                    else self.__convert_bank_statement if is_bank \
                     else None
             ) \
             for statement in statements
         ]
+
+    
+    def __convert_bank_statement(self, statement: list[dict[str, str | float]]) -> list[dict[str, str | float]]:
+        for entry_id in range(len(statement)):
+            entry: dict[str, str | float] = statement[entry_id]
+            del entry['Account Number']
+            del entry['Check']
+            del entry['Status']
+            del entry['Balance']
+            statement[entry_id]: dict[str, str | float] = {
+                'Date': entry.pop('Post Date'),
+                'Description': entry.pop('Description'),
+                'Amount': float(entry.pop('Debit') if not entry['Debit'] == '' else '-' + entry.pop('Credit')),
+                'Category': entry.pop('Classification')
+            }
+        return statement
 
 
     def __convert_discover_statement(self, statement: list[dict[str, str | float]]) -> list[dict[str, str | float]]:
@@ -162,13 +177,23 @@ class TransactionAggregator:
         return statement
 
 
-    ###TODO: Fix indexing error after del on element in 2D list
     def __filter_statements(self, statements: list[list[dict[str, str | float]]]) -> list[list[dict[str, str | float]]]:
+        """Filters statement entries by their dates. If they are not within the given range of dates provided by the parsed
+        arguments, they are omitted in the rest of the operation.
+
+        Args:
+            statements (list[list[dict[str, str  |  float]]]): A list of statements
+
+        Returns:
+            list[list[dict[str, str | float]]]: The same list of statements passed to the method but filtered to only include
+            entries with dates in the provided range.
+        """
         for statement_id in range(len(statements)):
-            for entry_id in range(len(statements[statement_id])):
-                entry_date: datetime.date = date(statements[statement_id][entry_id]['Date'])
-                if entry_date < self.__start_date or entry_date > self.__end_date:
-                    del statements[statement_id][entry_id]
+            statements[statement_id] = [
+                statements[statement_id][entry_id]
+                for entry_id in range(len(statements[statement_id])) \
+                if date(statements[statement_id][entry_id]['Date']) >= self.__start_date and date(statements[statement_id][entry_id]['Date']) <= self.__end_date
+            ]
         return statements
 
     
@@ -183,17 +208,38 @@ class TransactionAggregator:
 
     #TODO: make compatible with both discover and bank statements
     def write_to_csv(self) -> bool:
+        """Writes the entirety of the aggregated statement entries to two CSV files. One is compatible with
+        the Google Sheets format found in the "Household" directory on the cloud; the other is formatted for
+        data analysis.
+
+        Returns:
+            bool: True if writing to files was successful; False otherwise.
+        """
         try:
-            with open(self.__file, 'w', newline='\n') as csv_file:
-                writer = csv.writer(csv_file, delimiter=',')
-                attributes: list[str] = self.__discover_credit_statements[0][0].keys()
-                writer.writerow(attributes)
+            attributes: list[str] = ['Date', 'Description', 'Amount', 'Category']
+            all_entries = []
+            if self.__discover_credit_statements is not None:
                 for statement in self.__discover_credit_statements:
                     for entry in statement:
-                        writer.writerow([entry[element] for element in attributes])
+                        all_entries.append([entry[element] for element in attributes])
+            if self.__bank_statements is not None:
+                for statement in self.__bank_statements:
+                    for entry in statement:
+                        all_entries.append([entry[element] for element in attributes])
+            all_entries.sort(reverse=True, key=lambda entry: date(entry[0]))
+            with open(self.__file + '_google_sheets.csv', 'w', newline='', encoding='utf-8') as csv_file:
+                writer = csv.writer(csv_file, delimiter=',')
+                for entry in all_entries:
+                    row = [str(entry[1]), str(entry[3]), None, str(entry[2]), None, str(entry[2]), None, None, None, str(entry[0])]
+                    writer.writerow(row)
+            with open(self.__file + '.csv', 'w', newline='', encoding='utf-8') as csv_file:
+                writer = csv.writer(csv_file, delimiter=',')
+                writer.writerow(attributes)
+                writer.writerows(all_entries)
 
             return True
         except:
+            print(f'ERROR: could not write aggregated files to {self.__file}.csv')
             return False
 
 
