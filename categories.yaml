@@ -1,0 +1,41 @@
+# File: categories.yaml
+# Description: Contains key-value pairs of how to translate 
+## given categories from statemens into the standardized format for
+## budgeting
+
+Conversions:
+  Utilities:
+    - n/a
+  Groceries:
+    - Merchandise
+    - Supermarkets
+  Activities:
+    - Restaurants
+  # Rent:
+    # - 
+  Household_Goods:
+    - Home Improvement
+    - Furnishings
+  Travel:
+    - Travel/ Entertainment
+  # Insurance:
+  #   - 
+  Loan:
+    - Auto Payment
+    - Transfer
+    - Interest Income
+    - Interest
+  Gas:
+    - Gasoline
+  Misc:
+    - Automotive
+    - Services
+    - Government Services
+    - Cash
+    - Paycheck
+    - Health Insurance
+    - Financial
+    - Credit Card Payment
+    - Payments and Credits
+    - Awards and Rebate Credits
+    # - 

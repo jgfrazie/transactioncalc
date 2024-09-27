@@ -4,9 +4,23 @@ import csv
 import types
 import argparse
 import datetime
+import yaml
+
+
+CATEGORIES_DATABASE = 'categories.yaml'
+
 
 def date(arg: str) -> datetime.date:
+    """Defines the date data type
+
+    Args:
+        arg (str): the raw string of a date formatted as MM/DD/YYYY
+
+    Returns:
+        datetime.date: a date object of the passed arg
+    """
     return datetime.datetime.strptime(arg, '%m/%d/%Y')
+
 
 def type_statements(arg: str) -> list[str]:
     """Converts the raw argument of a statement into a list of file paths to statements
@@ -89,8 +103,8 @@ class TransactionAggregator:
         self.__file: str = file
         self.__start_date: tuple[int, int, int] = start_date
         self.__end_date: tuple[int, int, int] = end_date
-        self.__bank_statements: list[list[dict[str, str | float]]] = self.__filter_statements(self.__read_in_statements(bank_statements, is_bank=True)) if bank_statements is not None else None
-        self.__discover_credit_statements: list[list[dict[str, str | float]]] = self.__filter_statements(self.__read_in_statements(discover_credit_statements, is_discover=True)) if discover_credit_statements is not None else None
+        self.__bank_statements: list[list[dict[str, str | float]]] = self.__clean_statements(bank_statements, is_bank=True)
+        self.__discover_credit_statements: list[list[dict[str, str | float]]] = self.__clean_statements(discover_credit_statements, is_discover=True)
         
 
     def __read_statement(self, statement_file: str, converter: types.FunctionType | None) -> list[dict[str, str | float]]:
@@ -113,6 +127,56 @@ class TransactionAggregator:
                 entry: list[str] = raw_statement[entry_id]
                 raw_statement[entry_id] = {keys[element_id]: entry[element_id] for element_id in range(len(entry))}
             return raw_statement if converter is None else converter(raw_statement)
+
+
+    def __clean_statements(self, statements: list[str], is_discover=False, is_bank=False) -> list[list[dict[str, str | float]]]:
+        """Processes the given statement files from raw format to budget-friendly format
+
+        Args:
+            statements (list[str]): a list of file paths to raw statements
+            is_discover (bool, optional): signals if this is a discover statement being processed. Defaults to False.
+            is_bank (bool, optional): signals if this is a bank statement being processed. Defaults to False.
+
+        Returns:
+            list[list[dict[str, str | float]]]: the list of statement CSVs read in and converted to budgeting format.
+        """
+        processed_statements = None
+        if statements is None:
+            return None
+        if is_bank:
+            processed_statements = self.__filter_statements(self.__read_in_statements(statements, is_bank=True))
+        elif is_discover:
+            processed_statements = self.__filter_statements(self.__read_in_statements(statements, is_discover=True))
+        
+        return self.__translate_categories(processed_statements)
+
+
+    #TODO: Only does direct 1-1 translation. In the future, should consider price and possibly description/tags.
+    def __translate_categories(self, statements: list[list[dict[str, str | float]]]) -> list[list[dict[str, str | float]]]:
+        """Translates the raw categories from the statements into personal budgeting categories.
+
+        Args:
+            statements (list[list[dict[str, str  |  float]]]): statements processed into standardized JSON format
+
+        Returns:
+            list[list[dict[str, str | float]]]: The same statements passed but categories translated
+        """
+        with open(CATEGORIES_DATABASE, 'r', encoding='utf-8') as translations:
+            translations = list(yaml.safe_load_all(translations))
+            translations = translations[0]['Conversions']
+            for statement_id in range(len(statements)):
+                for entry_id in range(len(statements[statement_id])):
+                    entry = statements[statement_id][entry_id]
+                    found_match: bool = False
+                    for true_category in translations.keys():
+                        if entry['Category'] == true_category or entry['Category'] in translations[true_category]:
+                            entry['Category'] = true_category
+                            found_match = True
+                            break
+                    if not found_match:
+                        print(f'MESSAGE: {entry['Category']} not found in database')
+                    statements[statement_id][entry_id] = entry
+            return statements
 
 
     def __read_in_statements(self, statements: list[str], is_discover: bool=False, is_bank: bool=False) -> list[list[dict[str, str | float]]]:
@@ -139,7 +203,7 @@ class TransactionAggregator:
             for statement in statements
         ]
 
-    
+    #NOTE: In the future, will need to refactor for First Source bank statements.
     def __convert_bank_statement(self, statement: list[dict[str, str | float]]) -> list[dict[str, str | float]]:
         for entry_id in range(len(statement)):
             entry: dict[str, str | float] = statement[entry_id]
@@ -206,7 +270,7 @@ class TransactionAggregator:
         return self.__discover_credit_statements
 
 
-    #TODO: make compatible with both discover and bank statements
+    #NOTE: In the future, will need to refactor for First Source bank statements
     def write_to_csv(self) -> bool:
         """Writes the entirety of the aggregated statement entries to two CSV files. One is compatible with
         the Google Sheets format found in the "Household" directory on the cloud; the other is formatted for
